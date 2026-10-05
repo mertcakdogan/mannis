@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "icons");
 
-// ── Mochi ─────────────────────────────────────────────────────────────────────
+// ── Mannis icon palette ────────────────────────────────────────────────────────
 
 const BASE_TOP = [255, 250, 245]; // #FFFAF5
 const BASE_BOTTOM = [221, 204, 191]; // #DDCCBF
@@ -108,6 +108,56 @@ function renderMochi(size) {
   return px;
 }
 
+// ── Mannis / Stannis ─────────────────────────────────────────────────────────
+
+function insideEllipse(x, y, cx, cy, rx, ry) {
+  return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+}
+
+function insidePolygon(x, y, points) {
+  let hit = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i][0], yi = points[i][1], xj = points[j][0], yj = points[j][1];
+    if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+/** Small Stannis bust: stern face, brown-grey hair, black armour, gold stag. */
+function renderStannis(size) {
+  const px = new Uint8Array(size * size * 4);
+  const SS = 4;
+  const sample = (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    let color = null;
+    const cloak = [[u * 1.1 - 0.05, 1.04], [u * 0.95 + 0.05, 1.04], [0.79, 0.68], [0.21, 0.68]];
+    if (insidePolygon(u, v, cloak)) color = [25, 22, 22];
+    if (insideEllipse(u, v, 0.5, 0.77, 0.32, 0.26)) color = [10, 11, 13];
+    if (insideEllipse(u, v, 0.5, 0.39, 0.235, 0.28)) color = [220, 145, 103];
+    if (insideEllipse(u, v, 0.5, 0.24, 0.24, 0.15)) color = [57, 46, 43];
+    if (insideEllipse(u, v, 0.39, 0.39, 0.045, 0.08) || insideEllipse(u, v, 0.61, 0.39, 0.045, 0.08)) color = [37, 28, 27];
+    if (insideEllipse(u, v, 0.42, 0.43, 0.034, 0.018) || insideEllipse(u, v, 0.58, 0.43, 0.034, 0.018)) color = [14, 12, 12];
+    if (insidePolygon(u, v, [[0.37,0.47],[0.46,0.49],[0.42,0.51]])) color = [45, 26, 24];
+    if (insidePolygon(u, v, [[0.63,0.47],[0.54,0.49],[0.58,0.51]])) color = [45, 26, 24];
+    if (insidePolygon(u, v, [[0.39,0.67],[0.61,0.67],[0.58,0.72],[0.42,0.72]])) color = [181, 133, 37];
+    if (insidePolygon(u, v, [[0.47,0.72],[0.53,0.72],[0.55,0.80],[0.45,0.80]])) color = [34, 25, 20];
+    if (insideEllipse(u, v, 0.5, 0.67, 0.11, 0.09)) color = [29, 25, 22];
+    if (!color) return null;
+    return color;
+  };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const sum = [0, 0, 0]; let hits = 0;
+    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+      const c = sample(x + (sx + 0.5) / SS, y + (sy + 0.5) / SS);
+      if (c) { sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; hits++; }
+    }
+    if (!hits) continue;
+    const o = (y * size + x) * 4;
+    px[o] = Math.round(sum[0] / hits); px[o + 1] = Math.round(sum[1] / hits); px[o + 2] = Math.round(sum[2] / hits); px[o + 3] = Math.round((hits / (SS * SS)) * 255);
+  }
+  return px;
+}
 // ── PNG ───────────────────────────────────────────────────────────────────────
 
 const CRC_TABLE = (() => {
@@ -182,7 +232,7 @@ function encodeICO(entries) {
 
 mkdirSync(OUT, { recursive: true });
 
-const png = (size) => encodePNG(size, renderMochi(size));
+const png = (size) => encodePNG(size, renderStannis(size));
 
 const files = {
   "32x32.png": png(32),

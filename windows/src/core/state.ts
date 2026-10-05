@@ -1,3 +1,4 @@
+import { DEFAULT_CHAT_SETTINGS, type ChatSettings } from "./chat-config";
 // App state — mirror of AppState.swift (the parts the island needs).
 
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
@@ -81,7 +82,7 @@ export interface IntegrationInfo {
   configured: boolean;
 }
 
-export interface Settings {
+export interface Settings extends ChatSettings {
   soundEnabled: boolean;
   soundVolume: number;
   autoCloseInterval: number;
@@ -92,9 +93,20 @@ export interface Settings {
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
   model: string;
+  /** Active companion id; unknown ids resolve to the default character. */
+  character: string;
+  /** Full path of a Beyin vault; empty = off. */
+  beyinVault: string;
+  /** Rule-based nudges from companion events; no model involved. */
+  proactive: boolean;
+  /** Send matching Beyin notes to the chat provider with each question. */
+  beyinChat: boolean;
+  /** Which notes may leave the vault for the chat provider. */
+  beyinAudience: "public" | "internal";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  ...DEFAULT_CHAT_SETTINGS,
   soundEnabled: true,
   soundVolume: 0.12,
   autoCloseInterval: 15,
@@ -106,6 +118,11 @@ export const DEFAULT_SETTINGS: Settings = {
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",
+  character: "stannis",
+  beyinVault: "",
+  proactive: true,
+  beyinChat: false,
+  beyinAudience: "public",
 };
 
 type Listener = () => void;
@@ -135,6 +152,10 @@ class AppState {
   droppedFile: { name: string; path: string } | null = null;
   noteMessage: string | null = null;
   searchResult: SearchResult | null = null;
+  /** Text supplied by an explicit proactive chat action; never submitted automatically. */
+  promptPrefill = "";
+  /** Draft used by the shared Beyin note form. */
+  beyinNoteDraft: { title: string; text: string } | null = null;
   chatHistory: ChatMessage[] = [];
   pendingApproval: ApprovalInfo | null = null;
 

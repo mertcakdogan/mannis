@@ -2,10 +2,12 @@
 
 import "./style.css";
 import { Bridge, IS_TAURI, onEvent } from "./core/bridge";
+import { chatConnectionKey } from "./core/chat-config";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
 import { registerHookHandlers } from "./island/hooks";
+import "./proactive";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 
 async function main() {
@@ -55,6 +57,12 @@ async function main() {
 
   // The settings window writes preferences; apply them here without a restart.
   await onEvent<Settings>("settings-changed", (s) => {
+    if (chatConnectionKey(State.settings) !== chatConnectionKey(s)) {
+      State.chatHistory = [];
+      State.stateOverride = null;
+      State.droppedFile = null;
+      void Bridge.chatReset();
+    }
     State.settings = { ...State.settings, ...s };
     island.applySettings();
     State.loadIntegrationTasks();

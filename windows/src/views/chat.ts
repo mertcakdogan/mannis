@@ -3,6 +3,7 @@
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
+import { Companion, normalizeChat } from "../characters";
 import { Bridge, type ChatContext } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
@@ -10,7 +11,7 @@ import type { ViewHost } from "./views";
 
 let nextId = 1;
 
-function bubble(message: ChatMessage): HTMLElement {
+function bubble(message: ChatMessage, onSaveNote: (text: string) => void): HTMLElement {
   if (message.role === "user") {
     return h(
       "div",
@@ -18,7 +19,9 @@ function bubble(message: ChatMessage): HTMLElement {
       h("div", { class: "bubble", text: message.content }),
     );
   }
-  return h("div", { class: "chat-row" }, h("div", { class: "reply", text: message.content }));
+  const reply = h("div", { class: "reply", text: message.content });
+  if (State.settings.beyinVault) reply.append(h("button", { class: "save-note-btn", text: "Save to Beyin", onclick: () => onSaveNote(message.content) }));
+  return h("div", { class: "chat-row" }, reply);
 }
 
 function typingDots(): HTMLElement {
@@ -36,7 +39,7 @@ function contextChip(label: string): HTMLElement {
   return chip;
 }
 
-export function buildPrompt(onHeightChange: () => void): ViewHost {
+export function buildPrompt(onHeightChange: () => void, onSaveNote: (text: string) => void): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   const input = h("input", {
@@ -56,7 +59,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
-  let renderedCount = -1;
+  let renderedKey = "";
 
   async function submit() {
     const query = input.value.trim();
@@ -65,8 +68,10 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     sending = true;
     Sound.play("send");
 
-    State.chatHistory.push({ id: nextId++, role: "user", content: query });
+    const message = { id: nextId++, role: "user", content: query } as const;
+    State.chatHistory.push(message);
     State.stateOverride = "thinking";
+    Companion.emit(normalizeChat("start", State.settings.chatProvider));
     State.notify();
     onHeightChange();
 
@@ -76,14 +81,19 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
     try {
       const reply = await Bridge.chatSend(query, context);
+      if (!State.chatHistory.includes(message)) return;
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
       State.stateOverride = null;
       Sound.play("finish");
+      Companion.emit(normalizeChat("done", State.settings.chatProvider));
     } catch (err) {
+      if (!State.chatHistory.includes(message)) return;
+      State.chatHistory = State.chatHistory.filter((entry) => entry.id !== message.id);
       State.stateOverride = null;
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");
+      Companion.emit(normalizeChat("error", State.settings.chatProvider));
     } finally {
       sending = false;
       State.notify();
@@ -114,16 +124,18 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
       const thinking = State.stateOverride === "thinking";
       const count = State.chatHistory.length + (thinking ? 0.5 : 0);
-      if (count !== renderedCount) {
-        renderedCount = count;
+      const renderKey = `${count}:${State.settings.beyinVault ? "linked" : "off"}`;
+      if (renderKey !== renderedKey) {
+        renderedKey = renderKey;
         clear(log);
-        for (const m of State.chatHistory) log.append(bubble(m));
+        for (const m of State.chatHistory) log.append(bubble(m, onSaveNote));
         if (thinking) log.append(typingDots());
         log.scrollTop = log.scrollHeight;
       }
 
       input.placeholder = State.chatHistory.length === 0 ? "Ask me anything…" : "Continue…";
       input.disabled = sending;
+      if (State.promptPrefill) { input.value = State.promptPrefill; State.promptPrefill = ""; }
     },
     focus() {
       input.focus();

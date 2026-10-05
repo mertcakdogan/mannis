@@ -1,13 +1,20 @@
-// Coucou for Windows — app wiring and the commands the island calls.
+// Mannis for Windows — app wiring and the commands the island calls.
 
 mod claude;
+mod beyin;
+mod chat;
+mod chat_context;
+mod provider_opencode;
+mod provider_router;
 mod files;
 mod hooks;
+mod legacy;
 mod integrations;
 mod island;
 mod log;
 mod pipe;
 mod platform;
+mod provider;
 mod secrets;
 mod settings;
 mod tray;
@@ -20,7 +27,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
-use claude::{Chat, ChatContext, ChatReply};
+use chat::Chat;
+use claude::{ChatContext, ChatReply};
 use files::DroppedFile;
 use hooks::{HookPreview, HookStatus};
 use island::{PollGate, ScreenInfo};
@@ -60,7 +68,9 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
+fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) -> Result<(), String> {
+    settings::validate(&settings)?;
+    settings::save(&settings).map_err(|err| format!("Could not save settings: {err}"))?;
     let (screen_changed, autostart_changed) = {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen;
@@ -68,14 +78,15 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         *current = settings.clone();
         (screen_changed, autostart_changed)
     };
-    if let Err(err) = settings::save(&settings) {
-        eprintln!("[coucou] could not save settings: {err}");
-    }
     if autostart_changed {
         let manager = app.autolaunch();
-        let result = if settings.autostart { manager.enable() } else { manager.disable() };
+        let result = if settings.autostart {
+            manager.enable()
+        } else {
+            manager.disable()
+        };
         if let Err(err) = result {
-            eprintln!("[coucou] autostart: {err}");
+            eprintln!("[mannis] autostart: {err}");
         }
     }
     if screen_changed {
@@ -84,6 +95,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     }
     // Keep the other window in step (island ⇄ settings window).
     let _ = app.emit("settings-changed", settings);
+    Ok(())
 }
 
 /// Hidden island → shrink the window to the invisible wake strip and park the
@@ -241,13 +253,69 @@ async fn chat_send(
     query: String,
     context: Option<ChatContext>,
 ) -> Result<ChatReply, String> {
-    let model = shared.settings.lock().unwrap().model.clone();
-    claude::send(&chat, &model, query, context).await
+    let settings = shared
+        .settings
+        .lock()
+        .map_err(|_| "Settings unavailable.".to_string())?
+        .clone();
+    let query = with_beyin_notes(&settings, query).await;
+    chat.send(&settings, query, context).await
+}
+
+/// Puts matching Beyin notes in front of the question when the user turned that on.
+/// A missing or slow Beyin must never block the chat, so on any failure the question
+/// goes out unchanged.
+async fn with_beyin_notes(settings: &Settings, query: String) -> String {
+    if !settings.beyin_chat || settings.beyin_vault.is_empty() {
+        return query;
+    }
+    let (vault, audience, asked) = (
+        settings.beyin_vault.clone(),
+        settings.beyin_audience.clone(),
+        query.clone(),
+    );
+    let notes = tauri::async_runtime::spawn_blocking(move || beyin::context(&vault, &asked, &audience))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    beyin::prompt_with_notes(&query, &notes)
 }
 
 #[tauri::command]
-fn chat_reset(chat: State<Chat>) {
-    chat.reset();
+async fn chat_reset(chat: State<'_, Chat>) -> Result<(), String> {
+    chat.reset().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn chat_models(settings: Settings) -> Result<Vec<provider::ChatModel>, String> {
+    chat::models(&settings).await
+}
+
+/// Recent work from the Beyin vault saved in Settings; the frontend never supplies a path.
+#[tauri::command]
+async fn beyin_recap(days: u32) -> Result<Vec<beyin::RecapItem>, String> {
+    let vault = settings::load().beyin_vault;
+    if vault.is_empty() {
+        return Err("Choose a Beyin vault in Settings first.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || beyin::recap(&vault, days))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Saves a note into the Beyin vault saved in Settings. Only ever called from an explicit
+/// "Save to Beyin" click; the vault path never comes from the frontend.
+#[tauri::command]
+async fn beyin_save_note(title: String, text: String) -> Result<String, String> {
+    let vault = settings::load().beyin_vault;
+    if vault.is_empty() {
+        return Err("Choose a Beyin vault in Settings first.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || beyin::save_note(&vault, &title, &text))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Copies a dropped file into the inbox and reports its name back.
@@ -321,7 +389,7 @@ fn create_settings_window(app: &AppHandle) {
     let url = settings_page_url(app);
     match WebviewWindowBuilder::new(app, "settings", url)
         .additional_browser_args(BROWSER_ARGS)
-        .title("Settings — Coucou")
+        .title("Settings — Mannis")
         .inner_size(560.0, 680.0)
         .min_inner_size(460.0, 480.0)
         .resizable(true)
@@ -360,6 +428,7 @@ fn open_settings_window(app: AppHandle) {
 
 pub fn run() {
     platform::prepare_environment();
+    legacy::migrate();
     let loaded = settings::load();
     let gate = Arc::new(PollGate::new());
 
@@ -393,6 +462,7 @@ pub fn run() {
             log_line,
             chat_send,
             chat_reset,
+            chat_models,
             ingest_file,
             secret_present,
             secret_set,
@@ -401,6 +471,8 @@ pub fn run() {
             open_n8n,
             open_settings_window,
             set_paused,
+            beyin_recap,
+            beyin_save_note,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -422,12 +494,12 @@ pub fn run() {
             gate.set_active(true);
             island::spawn_cursor_poll(handle.clone(), gate.clone());
 
-            log::line(format!("--- Coucou {} started ---", env!("CARGO_PKG_VERSION")));
+            log::line(format!("--- Mannis {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Coucou");
+        .expect("error while running Mannis");
 }

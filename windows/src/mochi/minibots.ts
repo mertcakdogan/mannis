@@ -3,6 +3,9 @@
 
 import { BotEngine, hexToRGB } from "./engine";
 import type { AgentTask } from "../core/state";
+import { drawCompanionSprite } from '../characters/draw';
+import { eventForState } from '../characters/companion';
+import { createIntegrationIcon } from './integration-icons';
 
 interface MiniBot {
   canvas: HTMLCanvasElement;
@@ -27,6 +30,13 @@ export function createMiniBot(task: AgentTask, bodySize: number): HTMLElement {
   slot.className = "mini";
   slot.style.width = `${bodySize}px`;
   slot.style.height = `${bodySize}px`;
+
+  const icon = task.isIntegration ? createIntegrationIcon(task.id, bodySize) : null;
+  if (icon) {
+    slot.style.color = task.color;
+    slot.append(icon);
+    return slot;
+  }
 
   const canvas = document.createElement("canvas");
   const engineSize = bodySize / 0.6;
@@ -80,7 +90,10 @@ export function tickMiniBots(dt: number) {
     mb.engine.update(dt);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, mb.cssSize, mb.cssSize);
-    mb.engine.draw(ctx, mb.cssSize, mb.cssSize);
+    if (!drawCompanionSprite(ctx, mb.cssSize / 2, mb.cssSize / 2, mb.cssSize * 0.6,
+      eventForState(mb.engine.state), mb.engine, performance.now())) {
+      mb.engine.draw(ctx, mb.cssSize, mb.cssSize);
+    }
   }
 }
 

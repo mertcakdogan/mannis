@@ -1,4 +1,4 @@
-/* Coucou for Windows — same palette, sizes and type scale as the macOS island.
+/* Mannis for Windows — same palette, sizes and type scale as the macOS island.
    Every colour below is copied from the Swift views. */
 
 :root {
@@ -182,6 +182,14 @@ body {
 }
 
 /* ── Content shell (expanded) ───────────────────────────────────────────── */
+.mini .integration-symbol {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: color-mix(in srgb, currentColor 60%, white);
+  pointer-events: none;
+}
+
 
 #content {
   position: absolute;
@@ -1364,4 +1372,32 @@ input[type="range"]::-webkit-slider-thumb {
 
 .int-card.detail {
   padding-top: 8px;
+}
+
+/* Proactive nudges stay quiet: a compact marker, or a small action card in the expanded island. */
+#suggestion { position: absolute; z-index: 8; pointer-events: auto; display: flex; align-items: center; gap: 7px; }
+#suggestion.expanded { top: 7px; right: 12px; max-width: 300px; padding: 7px 8px 7px 10px; border: 1px solid rgba(255,255,255,.10); border-radius: 12px; background: rgba(20,21,24,.94); box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+#suggestion.compact { top: 7px; right: 8px; }
+.suggestion-text { color: var(--dim); font: 400 11px/1.3 var(--font); max-width: 180px; }
+.suggestion-marker { border: 0; padding: 4px; display: grid; place-items: center; border-radius: 50%; background: rgba(20,21,24,.94); cursor: pointer; }
+.suggestion-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px rgba(245,165,36,.8); }
+.suggestion-action, .suggestion-close { border: 0; cursor: pointer; color: var(--ink); background: transparent; font: 500 11px var(--font); padding: 3px 5px; border-radius: 6px; white-space: nowrap; }
+.suggestion-action { background: rgba(255,255,255,.10); }
+.suggestion-action:hover, .suggestion-close:hover { background: rgba(255,255,255,.16); }
+.suggestion-close { color: var(--dim-2); font-size: 15px; line-height: 1; }
+.beyin-note-form { padding: 12px 16px 12px 82px; gap: 7px; }
+.beyin-note-form input, .beyin-note-form textarea { width: 100%; min-width: 0; font: 400 12px var(--font); color: var(--ink); background: rgba(255,255,255,.07); border: 1px solid var(--hairline); border-radius: 8px; padding: 6px 8px; }
+.beyin-note-form textarea { resize: vertical; }
+.result-body { padding: 14px 18px 14px 84px; }
+.result-list { list-style: none; display: flex; flex-direction: column; gap: 6px; overflow: auto; margin: 0; padding: 0; }
+.result-list li { display: flex; flex-direction: column; gap: 1px; font: 400 11.5px/1.35 var(--font); color: var(--dim); }
+.result-list strong { color: var(--ink-2); font-weight: 500; }
+.save-note-btn { display: block; margin-top: 5px; border: 0; border-radius: 6px; padding: 3px 6px; color: var(--dim); background: rgba(255,255,255,.07); font: 500 10.5px var(--font); cursor: pointer; }
+.save-note-btn:hover { color: var(--ink); background: rgba(255,255,255,.13); }
+.companion-section .characters, .beyin-section .recap { max-height: 220px; overflow: auto; }
+.companion-section .character { transition: border-color .14s, background .14s, transform .08s; }
+.companion-section .character:hover { background: rgba(255,255,255,.05); }
+.companion-section .character:focus-visible, .beyin-section button:focus-visible, .beyin-section input:focus-visible, .beyin-section textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  #suggestion, .companion-section .character, .save-note-btn { transition: none; }
 }

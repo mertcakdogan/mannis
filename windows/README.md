@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128.png" width="96" alt="Coucou icon">
+<img src="src-tauri/icons/128x128.png" width="96" alt="Mannis icon">
 
-# Coucou for Windows
+# Mannis for Windows
+
+Mannis was called Coucou. On first launch it moves your preferences, inbox and log from the old `Coucou` folders and your saved keys from the old Credential Manager / Secret Service entries. Claude Code hooks installed under the old name stop working quietly until you click **Install** again in Settings, which replaces them. The old `Coucou/bin` folder is left in place so those hooks keep failing silently rather than noisily; delete it afterwards.
 
 **Mochi doesn't get a notch on a PC — so it lives at the top of your screen instead.**
 
@@ -58,15 +60,25 @@ your integrations sit in the coloured pills next to Mochi.
 Open **Settings… → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
 that will be taken, and nothing is written until you click. Your own hooks are
-never touched, and uninstalling removes only Coucou's entries.
+never touched, and uninstalling removes only Mannis's entries.
 
-The relay is a tiny executable, `coucou-hook.exe`, copied to
-`%LOCALAPPDATA%\Coucou\bin\` at launch. It is given 300 ms to reach Coucou and
+The relay is a tiny executable, `mannis-hook.exe`, copied to
+`%LOCALAPPDATA%\Mannis\bin\` at launch. It is given 300 ms to reach Mannis and
 exits cleanly if the app is closed, slow or crashed — **a Claude Code session is
-never blocked or slowed down by Coucou.** If nobody answers a permission request
-in time, Coucou stays quiet and Claude Code asks in the terminal as usual.
+never blocked or slowed down by Mannis.** If nobody answers a permission request
+in time, Mannis stays quiet and Claude Code asks in the terminal as usual.
 
 It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
+
+## OpenCode and 9router
+
+**Settings → Chat connection** now supports OpenCode servers and 9router alongside
+Claude. Models load automatically after saving a credential and when reopening a
+provider with saved credentials. Choose a model from the dropdown and save your
+provider choice; custom model IDs and router combos are supported too.
+Credentials stay in the OS credential store. OpenCode chat sessions disable agent
+tools; this feature does not monitor OpenCode CLI sessions or approve their tools.
+See [the setup guide](PROVIDERS.md) for Windows commands and supported file types.
 
 ## Chat and keys
 
@@ -74,7 +86,7 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 Credential Manager**, never on disk and never in the interface — the island can
 only ask whether a key exists. Same for every integration key.
 
-No telemetry. The only network requests Coucou makes are to the services you
+No telemetry. The only network requests Mannis makes are to the services you
 configure yourself.
 
 ## Build it yourself
@@ -99,11 +111,11 @@ otherwise needs a real drag from Explorer to see. Neither page ships in the app.
 workflow publishes:
 
 ```
-Coucou-Windows-X.Y.Z-setup.exe    the versioned installer
-Coucou-Windows-setup.exe          the same file under the rolling name
+Mannis-Windows-X.Y.Z-setup.exe    the versioned installer
+Mannis-Windows-setup.exe          the same file under the rolling name
 ```
 
-Installing is optional — `target/release/coucou.exe` runs on its own. There is no
+Installing is optional — `target/release/mannis.exe` runs on its own. There is no
 window in the taskbar and no console: the island at the top of the screen and the
 Mochi in the notification area are the whole app, and Quit lives in its menu.
 
@@ -127,13 +139,13 @@ windows/
     views/             every island view
     settings/          the settings window
   src-tauri/           Rust backend: window, named pipe, Claude API, pollers
-  hook/                coucou-hook.exe, the Claude Code relay
+  hook/                mannis-hook.exe, the Claude Code relay
   scripts/             icon generator
 ```
 
 ### Log
 
-`%LOCALAPPDATA%\Coucou\coucou.log` — hook events, permission decisions, poller
+`%LOCALAPPDATA%\Mannis\mannis.log` — hook events, permission decisions, poller
 problems. It stays on your machine.
 
 ## What's different from the Mac version
@@ -167,17 +179,17 @@ What changes on Linux:
 - **The island** is a gtk-layer-shell overlay anchored to the top edge, over any
   top panel, on compositors that support it: COSMIC, KDE Plasma, Hyprland, Sway
   and other wlroots compositors. GNOME has no layer-shell, so there the island
-  is a regular window. `COUCOU_LAYER_SHELL=0` forces that mode anywhere.
+  is a regular window. `MANNIS_LAYER_SHELL=0` forces that mode anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
 - **Mochi's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else.
-- **Claude Code hooks** go through `~/.local/share/coucou/bin/coucou-hook` and a
-  Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
+- **Claude Code hooks** go through `~/.local/share/mannis/bin/mannis-hook` and a
+  Unix socket at `$XDG_RUNTIME_DIR/mannis.sock`. Both ends check that the other
   runs as the same user.
 - **Keys** live in the Secret Service (GNOME Keyring, KWallet).
-- **Files**: preferences in `~/.config/coucou/`, the log at
-  `~/.local/share/coucou/coucou.log`.
+- **Files**: preferences in `~/.config/mannis/`, the log at
+  `~/.local/share/mannis/mannis.log`.
 - What the Windows build leaves out, this one does too: sending a file by
   email, dragging Mochi onto a window, and jumping to a specific terminal
   window — "Open terminal" opens the folder in VS Code.

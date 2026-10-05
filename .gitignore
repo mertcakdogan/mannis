@@ -19,3 +19,10 @@ DerivedData/
 # Local only (never published)
 .claude/
 _prive/
+
+/windows/.qa/
+
+/windows/.omo/
+
+# oh-my-claudecode working state
+.omc/

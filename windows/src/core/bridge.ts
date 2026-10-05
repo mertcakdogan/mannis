@@ -15,7 +15,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   try {
     return await invoke<T>(cmd, args);
   } catch (err) {
-    console.error(`[coucou] ${cmd} failed`, err);
+    console.error(`[mannis] ${cmd} failed`, err);
     return null;
   }
 }
@@ -33,7 +33,7 @@ export interface BootInfo {
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
 
-  saveSettings: (settings: Settings) => call<void>("save_settings", { settings }),
+  saveSettings: (settings: Settings) => callOrThrow<void>("save_settings", { settings }),
 
   /** Shrink the window down to the invisible wake strip (hidden) or back to full. */
   setCollapsed: (collapsed: boolean) => call<void>("set_collapsed", { collapsed }),
@@ -59,7 +59,7 @@ export const Bridge = {
 
   openSettingsWindow: () => call<void>("open_settings_window"),
 
-  /** Writes to %LOCALAPPDATA%\Coucou\coucou.log, next to the Rust lines. */
+  /** Writes to %LOCALAPPDATA%\Mannis\mannis.log, next to the Rust lines. */
   log: (message: string) => call<void>("log_line", { message }),
 
   // ── Claude Code hooks ─────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ export const Bridge = {
   chatSend: (query: string, context: ChatContext | null) =>
     callOrThrow<{ text: string }>("chat_send", { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  chatModels: (settings: Settings) =>
+    callOrThrow<readonly { readonly id: string; readonly name: string }[]>("chat_models", { settings }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
   /** Only ever tells you whether a key exists — never its value. */
@@ -96,6 +98,14 @@ export const Bridge = {
   refreshIntegration: (id: string) => call<void>("refresh_integration", { id }),
   /** Opens the configured n8n instance in the browser. */
   openN8n: () => call<void>("open_n8n"),
+
+  /** Recent work from the Beyin vault saved in Settings. */
+  beyinRecap: (days: number) =>
+    callOrThrow<readonly { created_at: string; summary: string }[]>("beyin_recap", { days }),
+
+  /** Saves a note into the Beyin vault. Call only from an explicit "Save" click. */
+  beyinSaveNote: (title: string, text: string) =>
+    callOrThrow<string>("beyin_save_note", { title, text }),
 
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
@@ -135,7 +145,7 @@ export interface HookPreview {
 
 /** Same as `call`, but surfaces the error so the UI can show what went wrong. */
 async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (!IS_TAURI) throw new Error("not running inside Coucou");
+  if (!IS_TAURI) throw new Error("not running inside Mannis");
   return invoke<T>(cmd, args);
 }
 

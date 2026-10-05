@@ -1,6 +1,7 @@
 // The launch "coucou" — port of GreetingCanvasView.swift.
 // Everything is laid out in the same 640×150 reference space as on macOS.
 
+import { drawCompanionSprite } from "../characters/draw";
 import { Sound } from "../core/sound";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
 
@@ -560,7 +561,10 @@ export class Greeting {
       drawParticles(x, t, p);
     }
 
-    drawMinis(x, p.minis);
-    drawMochi(x, p);
+    if (!drawCompanionSprite(x, p.x, p.y, p.hb, p.wave >= 0 ? "permission_approved" : "agent_started",
+      { sx: p.sx, sy: p.sy, ox: 0, oy: 0, tilt: p.tilt, roll: 0 }, performance.now())) {
+      drawMinis(x, p.minis);
+      drawMochi(x, p);
+    }
   }
 }

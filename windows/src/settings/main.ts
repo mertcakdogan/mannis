@@ -3,6 +3,9 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
+import { beyinSection } from "./beyin";
+import { companionSection } from "./companion";
+import { providerSection } from "./providers";
 import { Bridge, onEvent, type HookStatus } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
@@ -13,7 +16,14 @@ let version = "";
 const root = document.getElementById("settings-root")!;
 
 async function save() {
-  await Bridge.saveSettings(settings);
+  try {
+    await Bridge.saveSettings(settings);
+    document.getElementById("settings-save-error")?.remove();
+  } catch (error) {
+    const notice = document.getElementById("settings-save-error") ?? h("div", { id: "settings-save-error", class: "notice err", role: "alert" });
+    notice.textContent = error instanceof Error ? error.message : String(error);
+    root.append(notice);
+  }
 }
 
 // ── Reusable bits ─────────────────────────────────────────────────────────────
@@ -67,7 +77,7 @@ function claudeSection(status: HookStatus): HTMLElement {
       h("div", {
         class: "hint",
         text: status.installed
-          ? "Coucou is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there."
+          ? "Mannis is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there."
           : "Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing.",
       }),
       h("div", { class: "row" },
@@ -84,7 +94,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     if (!status.hookReady) {
       body.append(h("div", {
         class: "notice warn",
-        text: "coucou-hook.exe is not in place yet. Restart Coucou; if it still fails, build it with `cargo build -p coucou-hook`.",
+        text: "mannis-hook.exe is not in place yet. Restart Mannis; if it still fails, build it with `cargo build -p mannis-hook`.",
       }));
     }
 
@@ -135,7 +145,7 @@ function claudeSection(status: HookStatus): HTMLElement {
         class: "hint",
         text: install
           ? "This is exactly what will change in your settings.json. Your own hooks are left untouched."
-          : "This removes Coucou's entries only. Your own hooks are left untouched.",
+          : "This removes Mannis's entries only. Your own hooks are left untouched.",
       }),
       renderDiff(preview.diff),
       h("div", { class: "row" },
@@ -440,8 +450,21 @@ async function main() {
 
   clear(root);
   root.append(
-    h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
+    h("h1", {}, h("span", { text: "Mannis" }), h("span", { class: "version", text: version })),
+    companionSection(
+      () => settings,
+      (id) => { settings.character = id; void save(); },
+      (on) => { settings.proactive = on; void save(); },
+    ),
     claudeSection(status),
+    providerSection(() => settings, async (next) => {
+      await Bridge.saveSettings(next);
+      settings = next;
+    }),
+    beyinSection(() => settings, async (next) => {
+      await Bridge.saveSettings(next);
+      settings = next;
+    }),
     apiSection(hasKey),
     integrationsSection(present),
     generalSection(),

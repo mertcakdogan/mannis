@@ -3,11 +3,13 @@
 
 use keyring::Entry;
 
-const SERVICE: &str = "fr.louisraille.coucou";
+const SERVICE: &str = "fr.louisraille.mannis";
 
-/// Every key Coucou may store. Anything outside this list is refused.
+/// Every key Mannis may store. Anything outside this list is refused.
 pub const KNOWN_KEYS: &[&str] = &[
     "anthropic-api-key",
+    "opencode-server-password",
+    "nine-router-api-key",
     "n8n-url",
     "n8n-api-key",
     "vercel-token",
@@ -48,4 +50,24 @@ pub fn clear(key: &str) -> Result<(), String> {
 
 pub fn present(key: &str) -> bool {
     get(key).is_some()
+}
+
+/// Service name used while the app was still called Coucou.
+const LEGACY_SERVICE: &str = "fr.louisraille.coucou";
+
+/// Moves keys stored under the old service name to the current one, once per key. A key
+/// that already exists under the new name is never overwritten.
+pub fn migrate_legacy() {
+    for key in KNOWN_KEYS {
+        let Some(new) = entry(key) else { continue };
+        if get(key).is_some() {
+            continue;
+        }
+        let Ok(old) = Entry::new(LEGACY_SERVICE, key) else { continue };
+        if let Ok(value) = old.get_password() {
+            if !value.is_empty() && new.set_password(&value).is_ok() {
+                let _ = old.delete_credential();
+            }
+        }
+    }
 }

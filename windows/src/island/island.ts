@@ -2,6 +2,9 @@
 // Mirrors IslandRootView.swift + IslandWindowController.swift.
 
 import { Tracked, Spring, clamp } from "../core/anim";
+import { Companion, normalizeDecision } from "../characters";
+import { prefersReducedMotion } from "../characters/motion";
+import { Proactive, type Suggestion } from "../proactive";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
   EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
@@ -21,6 +24,10 @@ import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 
 const BOT_OVERHANG = 40;
+/** A sprite character is a full figure, not a round blob: it reads better a little larger. */
+const CHARACTER_GROWTH = 1.25;
+/** Idle breathing and swaying: ~30 fps is plenty and far cheaper than 60. */
+const AMBIENT_FRAME_MS = 33;
 /** Same margin as the Rust hit test (src-tauri/src/island.rs). */
 const HIT_MARGIN = 14;
 
@@ -45,6 +52,8 @@ export class Island {
   private greetingCanvas!: HTMLCanvasElement;
   private miniGrid!: HTMLElement;
   private countdown!: HTMLElement;
+  private suggestionEl!: HTMLElement;
+  private suggestionTimer: number | null = null;
   private wakeStrip!: HTMLElement;
 
   private header!: ViewHost;
@@ -99,6 +108,19 @@ export class Island {
       this.dirty = true;
       this.ensureRunning();
     });
+    Companion.onChange = () => {
+      this.dirty = true;
+      this.ensureRunning();
+    };
+    Proactive.onChange = () => {
+      this.dirty = true;
+      this.syncSuggestion();
+      if (State.mode !== "hidden") this.ensureRunning();
+    };
+    // Idle poses rotate on a slow clock; the frame loop is asleep while idle.
+    window.setInterval(() => {
+      if (State.mode !== "hidden") Companion.onChange?.();
+    }, 15_000);
   }
 
   // ── DOM ─────────────────────────────────────────────────────────────────────
@@ -140,6 +162,7 @@ export class Island {
         if (!req) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
+        Companion.emit(normalizeDecision(d, req.sessionId));
         State.pendingApproval = null;
         State.isPinned = false;
         this.fsm.pinned = false;
@@ -166,6 +189,9 @@ export class Island {
         State.notify();
       },
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
+      openBeyinNote: (title, text) => this.openBeyinNote(title, text),
+      saveBeyinNote: (title, text) => Bridge.beyinSaveNote(title, text),
+      openBeyinRecap: () => this.openBeyinRecap(),
       blip: () => Sound.play("blip"),
     };
 
@@ -175,6 +201,7 @@ export class Island {
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
     this.countdown = h("div", { id: "countdown" });
+    this.suggestionEl = h("div", { id: "suggestion" });
 
     this.header = buildHeader(actions);
     this.views = buildViews(actions, () => this.animateGeometry(false));
@@ -209,6 +236,7 @@ export class Island {
       this.botCanvas,
       this.miniGrid,
       this.countdown,
+      this.suggestionEl,
     );
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -219,6 +247,64 @@ export class Island {
 
     this.root.append(this.wakeStrip, this.islandEl);
     this.applyGeometry();
+  }
+
+  private openBeyinNote(title: string, text: string) {
+    State.beyinNoteDraft = { title, text };
+    this.setView("beyin_note");
+  }
+
+  private openBeyinRecap() {
+    Proactive.dismiss();
+    State.searchResult = null;
+    this.setView("result");
+    void Bridge.beyinRecap(7).then((items) => {
+      State.searchResult = { title: "Beyin recap", note: undefined, items: items.map((item) => ({ label: item.created_at.slice(0, 10), detail: item.summary })) };
+      State.notify();
+    }).catch((error: unknown) => {
+      State.searchResult = { title: "Beyin recap", note: error instanceof Error ? error.message : String(error), items: [] };
+      State.notify();
+    });
+  }
+
+  private suggestionAction(suggestion: Suggestion) {
+    Proactive.dismiss();
+    switch (suggestion.action.kind) {
+      case "chat_prompt":
+        State.promptPrefill = suggestion.action.prompt;
+        this.setView("prompt");
+        break;
+      case "save_note":
+        this.openBeyinNote(suggestion.action.title, "");
+        break;
+      case "beyin_recap":
+        this.openBeyinRecap();
+        break;
+    }
+  }
+
+  private syncSuggestion() {
+    const suggestion = Proactive.current();
+    if (!suggestion || State.mode === "hidden") {
+      this.suggestionEl.className = "";
+      this.suggestionEl.replaceChildren();
+      if (this.suggestionTimer != null) { window.clearTimeout(this.suggestionTimer); this.suggestionTimer = null; }
+      return;
+    }
+    const wantedClass = State.mode === "compact" ? "compact" : "expanded";
+    if (this.suggestionEl.dataset.id === suggestion.id && this.suggestionEl.className === wantedClass) return;
+    this.suggestionEl.dataset.id = suggestion.id;
+    this.suggestionEl.className = State.mode === "compact" ? "compact" : "expanded";
+    if (State.mode === "compact") {
+      this.suggestionEl.replaceChildren(h("button", { class: "suggestion-marker", title: "Open suggestion", onclick: () => { this.fsm.forceHome(); this.expand(State.defaultView()); } }, h("span", { class: "suggestion-dot" })));
+    } else {
+      const label = suggestion.action.kind === "chat_prompt" ? "Open chat" : suggestion.action.kind === "save_note" ? "Save note" : "Show recap";
+      const action = h("button", { class: "suggestion-action", text: label, onclick: () => this.suggestionAction(suggestion) });
+      const close = h("button", { class: "suggestion-close", text: "×", title: "Dismiss", onclick: () => Proactive.dismiss() });
+      this.suggestionEl.replaceChildren(h("span", { class: "suggestion-text", text: suggestion.text }), action, close);
+    }
+    if (this.suggestionTimer != null) window.clearTimeout(this.suggestionTimer);
+    this.suggestionTimer = window.setTimeout(() => { this.suggestionTimer = null; this.syncSuggestion(); this.dirty = true; this.ensureRunning(); }, 46_000);
   }
 
   // ── FSM ─────────────────────────────────────────────────────────────────────
@@ -690,6 +776,7 @@ export class Island {
     if (this.dirty) {
       this.dirty = false;
       this.syncDom();
+      this.syncSuggestion();
     }
 
     this.updateBotTargets();
@@ -733,10 +820,15 @@ export class Island {
       ? settling
       : settling ||
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
-        greetingActive || this.engine.busy || UploadSeq.isActive;
+        greetingActive || this.engine.busy || Companion.animating || UploadSeq.isActive;
 
+    // A sprite character keeps breathing while the island is on screen, at a lower
+    // rate than a real animation; nothing is scheduled at all while it is hidden.
+    const ambient = State.mode !== "hidden" && Companion.character.renderer !== null && !prefersReducedMotion();
     if (busy) {
       requestAnimationFrame(this.frame);
+    } else if (ambient) {
+      window.setTimeout(() => requestAnimationFrame(this.frame), AMBIENT_FRAME_MS);
     } else {
       this.running = false;
       Sound.idle();
@@ -804,7 +896,21 @@ export class Island {
     this.engine.update(dt);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, hCss);
-    this.engine.draw(ctx, w, hCss);
+    const { character } = Companion;
+    if (character.renderer) {
+      const e = this.engine;
+      // Same body centre the engine uses: half the particle overhang below the middle.
+      ctx.save();
+      ctx.translate(0, BOT_OVERHANG / 2);
+      character.renderer.draw(
+        ctx, w, hCss, Companion.view().pose,
+        { sx: e.sx * CHARACTER_GROWTH, sy: e.sy * CHARACTER_GROWTH, ox: e.ox, oy: e.oy, tilt: e.tilt, roll: e.roll },
+        performance.now(),
+      );
+      ctx.restore();
+    } else {
+      this.engine.draw(ctx, w, hCss);
+    }
   }
 
   /** BotCanvasView.lookX / lookY — tanh of the distance to the bot. */
@@ -882,6 +988,10 @@ export class Island {
 
   /** Applies settings coming from Rust at boot. */
   applySettings() {
+    Companion.character.renderer?.preload(() => {
+      this.dirty = true;
+      this.ensureRunning();
+    });
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;

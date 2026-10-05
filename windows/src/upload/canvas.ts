@@ -5,6 +5,7 @@
 // the file being sucked in. The island's own Mochi is hidden for the duration,
 // exactly as on macOS, because this canvas draws its own.
 
+import { drawCompanionSprite } from "../characters/draw";
 import { State } from "../core/state";
 import {
   USC, eIn, eInOut, eOut, lerp, progressAt,
@@ -291,6 +292,9 @@ export class UploadCanvas {
   // ── Mochi ─────────────────────────────────────────────────────────────────
 
   private drawMochi(ctx: CanvasRenderingContext2D, f: UploadFrame) {
+    if (drawCompanionSprite(ctx, f.x, f.y + f.hop, f.d,
+      f.progress >= 1 ? "task_completed" : f.progress > 0 ? "coding" : "idle",
+      { sx: f.sx, sy: f.sy, ox: 0, oy: 0, tilt: f.tilt, roll: 0 }, performance.now())) return;
     const R = f.d / 2 / 1.04;
     const mc = Math.max(0, Math.min(f.morph, 1));
 

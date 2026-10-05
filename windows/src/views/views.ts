@@ -26,6 +26,9 @@ export interface ViewActions {
   setAutoClose(seconds: number): void;
   openSettingsWindow(): void;
   blip(): void;
+  openBeyinNote(title: string, text: string): void;
+  saveBeyinNote(title: string, text: string): Promise<string>;
+  openBeyinRecap(): void;
 }
 
 export interface ViewHost {
@@ -332,7 +335,7 @@ function buildQuestion(): ViewHost {
       const task = State.focusTask;
       title.textContent = task?.steps.at(-1) ?? "Claude needs an answer.";
       clear(row);
-      row.append(h("div", { class: "sub", text: "Answer in your terminal — Coucou can't reply for you yet." }));
+      row.append(h("div", { class: "sub", text: "Answer in your terminal — Mannis can't reply for you yet." }));
     },
   };
 }
@@ -405,6 +408,51 @@ function buildNote(): ViewHost {
   };
 }
 
+function buildBeyinNote(actions: ViewActions): ViewHost {
+  const title = h("input", { type: "text", maxlength: "80", placeholder: "Title" }) as HTMLInputElement;
+  const text = h("textarea", { rows: "3", placeholder: "Something worth remembering" }) as HTMLTextAreaElement;
+  const status = h("div", { class: "sub", role: "status" });
+  const save = btn("Save to Beyin", "primary", () => {
+    status.textContent = "Saving…";
+    void actions.saveBeyinNote(title.value, text.value).then((source) => {
+      status.textContent = `Saved as ${source}`;
+      State.beyinNoteDraft = null;
+      State.notify();
+    }).catch((error: unknown) => {
+      status.textContent = error instanceof Error ? error.message : String(error);
+    });
+  });
+  const el = h("div", { class: "view" }, card("soft", h("div", { class: "stack beyin-note-form" },
+    h("div", { class: "title", text: "Save to Beyin" }),
+    h("label", { text: "Title" }), title,
+    h("label", { text: "Note" }), text,
+    h("div", { class: "actions" }, save, h("button", { class: "btn secondary", text: "Cancel", onclick: () => actions.setView(State.defaultView()) })),
+    status,
+  )));
+  return {
+    el,
+    sync() {
+      const draft = State.beyinNoteDraft ?? { title: "", text: "" };
+      if (title.value !== draft.title) title.value = draft.title;
+      if (text.value !== draft.text) text.value = draft.text;
+    },
+    focus() { title.focus(); title.select(); },
+  };
+}
+
+function buildResult(): ViewHost {
+  const title = h("div", { class: "title", text: "Beyin recap" });
+  const list = h("ul", { class: "result-list" });
+  const status = h("div", { class: "sub", role: "status" });
+  const el = h("div", { class: "view" }, card("soft", h("div", { class: "stack result-body" }, title, status, list)));
+  return { el, sync() {
+    clear(list);
+    const result = State.searchResult;
+    if (!result) { status.textContent = "Loading…"; return; }
+    status.textContent = result.note ?? (result.items.length ? "Last 7 days" : "Nothing recorded in the last 7 days.");
+    list.append(...result.items.map(item => h("li", {}, h("strong", { text: item.label }), h("span", { text: item.detail }))));
+  } };
+}
 // ── In-island settings ────────────────────────────────────────────────────────
 
 function buildSettings(actions: ViewActions): ViewHost {
@@ -496,14 +544,15 @@ export function buildViews(
   map.set("finished", buildFinished(actions));
   map.set("confused", buildConfused());
   map.set("note", buildNote());
+  map.set("beyin_note", buildBeyinNote(actions));
   map.set("settings", buildSettings(actions));
-  map.set("prompt", buildPrompt(onChatHeightChange));
+  map.set("prompt", buildPrompt(onChatHeightChange, (text) => actions.openBeyinNote("", text)));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("choose", buildChoose(actions));
   // Not in the Windows v1: sending a file by email, window attach + web result.
   map.set("mail", buildPlaceholder("Sending by email isn't in this version.", ""));
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
-  map.set("result", buildPlaceholder("Result", ""));
+  map.set("result", buildResult());
   return map;
 }
